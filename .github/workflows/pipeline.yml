@@ -1,0 +1,163 @@
+name: cicd-pipeline
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - 'new_branch'
+    tags:
+      - 'qa-*'
+      - 'prod-*'
+  pull_request:
+    branches:
+      - 'main'
+      - 'master'
+      - '**'
+    types:
+      - opened
+      - reopened
+      - edited
+
+env:
+  IMAGE: vm-alert
+  # REGISTRY_HOSTNAME: demodockeracc
+  ARGOCD_TOKEN : ${{ secrets.ARGOCD_TOKEN }}
+  REGISTRY_HOSTNAME: 681089424129.dkr.ecr.ap-south-1.amazonaws.com
+  
+
+jobs:
+  Build_Artifact:
+    if: (github.ref == 'refs/heads/merge_branch' && github.event_name == 'push') || (github.ref == 'refs/heads/master' && github.event_name == 'push') || (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'pull_request' || (startsWith(github.ref, 'refs/tags/qa-') && github.event_name == 'push') || (startsWith(github.ref, 'refs/tags/prod-') && github.event_name == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+        with:
+          driver: docker
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ env.REGISTRY_HOSTNAME }}/${{ env.IMAGE }}
+          tags: |
+            type=sha,enable=true,prefix=,suffix=,format=short
+      - name: docker build
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          args: |
+            --build-arg TMDB_V3_API_KEY=${{ secrets.TMDB_V3_API_KEY }}
+          outputs: type=tar,dest=/tmp/${{ env.IMAGE }}.tar
+
+  Push_Artifact_to_Registry:
+    if: (github.ref == 'refs/heads/merge_branch' && github.event_name == 'push') || (github.ref == 'refs/heads/master' && github.event_name == 'push') || (github.ref == 'refs/heads/main' && github.event_name == 'push') || (startsWith(github.ref, 'refs/tags/qa-') && github.event_name == 'push') || (startsWith(github.ref, 'refs/tags/prod-') && github.event_name == 'push')
+    needs: Build_Artifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+        with:
+          driver: docker
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ env.REGISTRY_HOSTNAME }}/${{ env.IMAGE }}
+          tags: |
+            type=sha,enable=true,prefix=,suffix=,format=short
+      # - name: Login to Docker Hub
+      #   uses: docker/login-action@v2
+      #   with:
+      #       username: ${{ secrets.DOCKERHUB_USERNAME }}
+      #       password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Login to ECR
+        uses: docker/login-action@v3
+        with:
+            registry: 681089424129.dkr.ecr.ap-south-1.amazonaws.com
+            username: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        
+      - name: docker push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.tags }}
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'library'
+          severity: 'CRITICAL,HIGH'
+          output: trivy-results.json
+      - name: Upload Trivy Results
+        uses: actions/upload-artifact@v2
+        if: always()
+        with:
+          name: Trivy Report
+          path: trivy-results.json
+        
+       
+  Deploy_to_Dev:
+    if: (github.ref == 'refs/heads/fix-vul' && github.event_name == 'push') || (github.ref == 'refs/heads/master' && github.event_name == 'push') || (github.ref == 'refs/heads/main' && github.event_name == 'push') 
+    needs: Push_Artifact_to_Registry
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - name: Kubernetes Security Lint
+      uses: sysdiglabs/k8s-security-lint@v1.0.0
+      with:
+        sourceDir: '/master/yamls'
+        targetDir: '/candidate/yamls'
+    - name: Scan repo with kube-linter
+      uses: stackrox/kube-linter-action@v1.0.4
+      continue-on-error: true
+      with:
+        directory: ./${{ env.IMAGE }}.yaml
+        format: json
+        output-file: kubelinter-report.json
+    - name: Upload Kube Linter Results
+      uses: actions/upload-artifact@v2
+      if: always()
+      with:
+        name: Kube Linter Report
+        path: kubelinter-report.json
+    - name: Post Privilege Check
+      run: |
+        echo ${{ toJSON(steps.k8s_privilege_check.outputs.escalation_report) }}
+    - name: Docker meta
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: |
+          ${{ env.REGISTRY_HOSTNAME }}/${{ env.IMAGE }}
+        tags: |
+            type=sha,enable=true,prefix=,suffix=,format=short
+    - uses: actions/checkout@v2
+    - name: Sync ArgoCD Application
+      uses: microsec-ai/argocd-actions@main
+      with:
+        # address: "34.30.141.56"
+        address: "myargocd.devopscloudhub.online"
+        token: ${{ env.ARGOCD_TOKEN }}
+        insecure: "true"
+        appName: ${{ env.IMAGE }}
+        imageTag: ${{ steps.meta.outputs.version }} 
+
+          
