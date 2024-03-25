@@ -21,9 +21,9 @@ on:
 
 env:
   IMAGE: vm-alert
-  # REGISTRY_HOSTNAME: demodockeracc
+  REGISTRY_HOSTNAME: demodockeracc
   ARGOCD_TOKEN : ${{ secrets.ARGOCD_TOKEN }}
-  REGISTRY_HOSTNAME: 681089424129.dkr.ecr.ap-south-1.amazonaws.com
+  # REGISTRY_HOSTNAME: 681089424129.dkr.ecr.ap-south-1.amazonaws.com
   
 
 jobs:
