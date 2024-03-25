@@ -58,9 +58,9 @@ def main(aws_access_key_id, aws_secret_access_key, slack_token, slack_channel):
 
         if running_count >= vm_count_limit:
             instance_info_str = '\n'.join([f"{info['Name']} (Launch Time: {info['LaunchTime']})" for info in instance_info])
-            send_slack_alert(slack_client, slack_channel, f"Alert! There are {running_count} instances running in region={region} \ncloud=aws, ACCOUNT-ID =  681089424129(Aws-main-acc). Please check.\nInstance Information:\n{instance_info_str}")
-        # else:
-        #     print("No action required. Number of running VMs is within the limit.cloud = AWS, ACC-ID=620934872547 (aws-main-acc)")
+            send_slack_alert(slack_client, slack_channel, f"Alert! There are {running_count} instances running in region={region} \ncloud=aws, ACCOUNT-ID =  681089424129(Aws-main-acc).\nInstance Information:\n Name={instance_info_str}. Please check")
+        else:
+            print("No action required. Number of running VMs is within the limit.cloud = AWS, ACC-ID=620934872547 (aws-main-acc)")
 
 def run_aws_vm_main():
     # Load environment variables from .env
