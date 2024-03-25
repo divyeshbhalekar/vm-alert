@@ -62,7 +62,7 @@ def main(aws_access_key_id, aws_secret_access_key, slack_token, slack_channel):
 
         if running_count >= vm_count_limit:
             instance_info_str = '\n'.join([f"{info['Name']} (Launch Time: {info['LaunchTime']})" for info in instance_info])
-            send_slack_alert(slack_client, slack_channel, f"Alert! There are {running_count} instances running in region={region} \ncloud=aws, ACCOUNT-ID = 620934872547 (Aws-main-acc). Please check.\nInstance Information:\n{instance_info_str}")
+            send_slack_alert(slack_client, slack_channel, f"Alert! There are {running_count} instances running in region={region} \ncloud=aws, ACCOUNT-ID =  681089424129(Aws-main-acc). Please check.\nInstance Information:\n{instance_info_str}")
         # else:
         #     print("No action required. Number of running VMs is within the limit.cloud = AWS, ACC-ID=620934872547 (aws-main-acc)")
 
@@ -73,6 +73,7 @@ def run_aws_vm_main():
     # Specify your AWS credentials
     aws_access_key_id = os.environ.get('AWS_ACCESS_KEY_ID')
     aws_secret_access_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+    aws_account_id = os.environ.get('AWS_ACC_ID')
 
     # Check if credentials are set
     if aws_access_key_id is None or aws_secret_access_key is None:
